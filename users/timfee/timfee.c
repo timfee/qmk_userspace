@@ -13,7 +13,7 @@ const uint16_t PROGMEM rbkt_combo[]   = {KC_N, KC_M, COMBO_END};
 const uint16_t PROGMEM pipe_combo[]   = {Z_L2, KC_X, COMBO_END};
 const uint16_t PROGMEM bslh_combo[]   = {SL_L1, KC_QUOT, COMBO_END};
 
-combo_t key_combos[COMBO_COUNT] = {
+combo_t key_combos[] = {
     COMBO(lparen_combo, KC_LPRN),
     COMBO(rparen_combo, KC_RPRN),
     COMBO(lbrace_combo, KC_LCBR),
