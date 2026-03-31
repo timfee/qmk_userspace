@@ -11,6 +11,5 @@
 #define RETRO_TAPPING_PER_KEY
 
 // ── Combos ──
-#define COMBO_COUNT 8
 #define COMBO_TERM 40
 #define COMBO_ONLY_FROM_LAYER 0
