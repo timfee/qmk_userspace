@@ -1,4 +1,6 @@
 {
     "userspace_version": "1.0",
-    "build_targets": []
+    "build_targets": [
+        ["keebart/corne_choc_pro/standard", "timfee"]
+    ]
 }
