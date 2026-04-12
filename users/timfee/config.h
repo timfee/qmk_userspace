@@ -16,11 +16,13 @@
 #define COMBO_ONLY_FROM_LAYER 0
 
 // ── OLED (SSD1312 on Keebart Corne Choc Pro) ──
-#define OLED_IC OLED_IC_SSD1312
+// Note: The vial-qmk-corne-choc-pro driver lacks SSD1312 support
+// (no OLED_IC_SSD1312, OLED_FLIP_SEGMENT, or configurable charge pump).
+// We set what the driver honors here; the SSD1312-specific fixups
+// (segment remap + charge pump voltage) are sent via raw I2C commands
+// in oled_post_init() inside timfee.c.
 #define OLED_DISPLAY_128X64
-#define OLED_FLIP_SEGMENT
 #define OLED_DISPLAY_ADDRESS 0x3C
-#define OLED_CHARGE_PUMP_VALUE 0x72
 #define OLED_BRIGHTNESS 64
 #define OLED_TIMEOUT 0
 #define OLED_TIMEOUT_USER 60000

@@ -317,6 +317,19 @@ static bool oled_post_init(void) {
         pin_t pen = get_charge_pump_enable_pin();
         gpio_write_pin_high(pen);
         wait_ms(20);
+
+        // The vial-qmk-corne-choc-pro OLED driver does not support
+        // OLED_IC_SSD1312, OLED_FLIP_SEGMENT, or configurable charge pump.
+        // It hardcodes SEGMENT_REMAP_INV (0xA1) and CHARGE_PUMP 0x14,
+        // but the SSD1312 needs SEGMENT_REMAP (0xA0) and charge pump 0x72.
+        // Send the correct values as raw I2C commands after driver init.
+        static const uint8_t ssd1312_fixup[] = {
+            0x00,       // I2C command mode
+            0xA0,       // SEGMENT_REMAP: flip segment direction for SSD1312
+            0x8D, 0x72, // CHARGE_PUMP: 9.0 V for SSD1312
+        };
+        oled_send_cmd(ssd1312_fixup, sizeof(ssd1312_fixup));
+
         oled_clear();
 
         g_user_ontime = timer_read32();
