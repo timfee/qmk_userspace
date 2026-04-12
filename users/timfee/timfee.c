@@ -172,8 +172,8 @@ static void render_wpm(void) {
     oled_write_P(PSTR("WPM: "), false);
     uint8_t wpm = get_current_wpm();
     char buf[4];
-    buf[0] = (wpm / 100) ? ('0' + wpm / 100) : ' ';
-    buf[1] = (wpm / 10)  ? ('0' + (wpm / 10) % 10) : ' ';
+    buf[0] = (wpm >= 100) ? ('0' + wpm / 100) : ' ';
+    buf[1] = (wpm >= 10)  ? ('0' + (wpm / 10) % 10) : ' ';
     buf[2] = '0' + wpm % 10;
     buf[3] = '\0';
     oled_write_ln(buf, false);
