@@ -15,7 +15,7 @@
 #define COMBO_TERM 40
 #define COMBO_ONLY_FROM_LAYER 0
 
-// ── OLED (matches Keebart vial_oled reference) ──
+// ── OLED (SSD1312 on Keebart Corne Choc Pro) ──
 #define OLED_IC OLED_IC_SSD1312
 #define OLED_DISPLAY_128X64
 #define OLED_FLIP_SEGMENT
@@ -23,9 +23,11 @@
 #define OLED_CHARGE_PUMP_VALUE 0x72
 #define OLED_BRIGHTNESS 64
 #define OLED_TIMEOUT 0
+#define OLED_TIMEOUT_USER 60000
 #define OLED_FADE_OUT
 
-// ── Split sync ──
-#define SPLIT_OLED_ENABLE
+// ── Split transport ──
+#define SPLIT_TRANSPORT_MIRROR
 #define SPLIT_WPM_ENABLE
-#define SPLIT_LAYER_STATE_ENABLE
+#define SPLIT_WATCHDOG_TIMEOUT 4000
+#define SPLIT_TRANSACTION_IDS_USER USER_SYNC_OLED_STATE, USER_SYNC_LASTKEY, USER_SYNC_PRESSES
