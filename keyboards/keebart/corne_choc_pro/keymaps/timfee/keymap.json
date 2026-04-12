@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "notes": "timfee's Corne Choc Pro layout with layer-taps, require-prior-idle, and combos",
+    "notes": "timfee's Keebart Corne Choc Pro layout with layer-taps, require-prior-idle, and combos",
     "documentation": "https://docs.qmk.fm",
     "keyboard": "keebart/corne_choc_pro/standard",
     "keymap": "timfee",
