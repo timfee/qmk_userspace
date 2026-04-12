@@ -14,8 +14,3 @@
 #define COMBO_COUNT 8
 #define COMBO_TERM 40
 #define COMBO_ONLY_FROM_LAYER 0
-
-// ── OLED / split sync ──
-#define SPLIT_OLED_ENABLE
-#define SPLIT_WPM_ENABLE
-#define SPLIT_LAYER_STATE_ENABLE
