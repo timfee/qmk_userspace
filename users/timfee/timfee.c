@@ -127,11 +127,14 @@ uint16_t get_quick_tap_term(uint16_t keycode, keyrecord_t *record) {
     }
 }
 
-// ── OLED display (rotation matches Keebart vial_oled reference) ──
+// ── OLED display ──
 #ifdef OLED_ENABLE
 
 oled_rotation_t oled_init_user(oled_rotation_t rotation) {
-    return OLED_ROTATION_90;
+    if (!is_keyboard_master()) {
+        return OLED_ROTATION_180;
+    }
+    return rotation;
 }
 
 static void render_layer(void) {
@@ -177,7 +180,7 @@ static void render_wpm(void) {
 }
 
 bool oled_task_user(void) {
-    if (is_keyboard_left()) {
+    if (is_keyboard_master()) {
         render_layer();
         render_keycode();
         render_wpm();
