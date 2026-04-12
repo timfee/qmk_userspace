@@ -1,2 +1,2 @@
-SRC += timfee.c
 COMBO_ENABLE = yes
+SRC += timfee.c
