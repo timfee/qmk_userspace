@@ -2,6 +2,7 @@
 
 // ── State for require-prior-idle ──
 static uint16_t last_key_time = 0;
+static uint16_t last_keycode  = KC_NO;
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};
@@ -27,6 +28,7 @@ combo_t key_combos[COMBO_COUNT] = {
 // ── Require-prior-idle: bypass hold-tap during typing ──
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (record->event.pressed) {
+        last_keycode = keycode;
         uint16_t elapsed = timer_elapsed(last_key_time);
 
         switch (keycode) {
@@ -124,3 +126,69 @@ uint16_t get_quick_tap_term(uint16_t keycode, keyrecord_t *record) {
         default:       return QUICK_TAP_TERM;
     }
 }
+
+// ── OLED display ──
+#ifdef OLED_ENABLE
+
+oled_rotation_t oled_init_user(oled_rotation_t rotation) {
+    if (!is_keyboard_master()) {
+        return OLED_ROTATION_180;
+    }
+    return rotation;
+}
+
+static void render_layer(void) {
+    oled_write_P(PSTR("Layer: "), false);
+    switch (get_highest_layer(layer_state)) {
+        case 0:
+            oled_write_ln_P(PSTR("Base"), false);
+            break;
+        case 1:
+            oled_write_ln_P(PSTR("Symbols"), false);
+            break;
+        case 2:
+            oled_write_ln_P(PSTR("Nav/Fn"), false);
+            break;
+        default:
+            oled_write_ln_P(PSTR("???"), false);
+            break;
+    }
+}
+
+static void render_keycode(void) {
+    oled_write_P(PSTR("Key: 0x"), false);
+    // Print last keycode as 4-digit hex
+    static const char hex[] = "0123456789ABCDEF";
+    char buf[5];
+    buf[0] = hex[(last_keycode >> 12) & 0xF];
+    buf[1] = hex[(last_keycode >> 8)  & 0xF];
+    buf[2] = hex[(last_keycode >> 4)  & 0xF];
+    buf[3] = hex[ last_keycode        & 0xF];
+    buf[4] = '\0';
+    oled_write_ln(buf, false);
+}
+
+static void render_wpm(void) {
+    oled_write_P(PSTR("WPM: "), false);
+    uint8_t wpm = get_current_wpm();
+    char buf[4];
+    buf[0] = (wpm / 100) ? ('0' + wpm / 100) : ' ';
+    buf[1] = (wpm / 10)  ? ('0' + (wpm / 10) % 10) : ' ';
+    buf[2] = '0' + wpm % 10;
+    buf[3] = '\0';
+    oled_write_ln(buf, false);
+}
+
+bool oled_task_user(void) {
+    if (is_keyboard_master()) {
+        render_layer();
+        render_keycode();
+        render_wpm();
+    } else {
+        render_wpm();
+        render_layer();
+    }
+    return false;
+}
+
+#endif
