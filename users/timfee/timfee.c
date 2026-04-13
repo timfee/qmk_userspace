@@ -15,8 +15,8 @@ const uint16_t PROGMEM lbkt_combo[]   = {KC_F, KC_G, COMBO_END};
 const uint16_t PROGMEM rbkt_combo[]   = {KC_H, KC_J, COMBO_END};
 const uint16_t PROGMEM lbrace_combo[] = {KC_V, KC_B, COMBO_END};
 const uint16_t PROGMEM rbrace_combo[] = {KC_N, KC_M, COMBO_END};
-const uint16_t PROGMEM pipe_combo[]   = {Z_L1, KC_X, COMBO_END};
-const uint16_t PROGMEM bslh_combo[]   = {SL_L2, KC_QUOT, COMBO_END};
+const uint16_t PROGMEM pipe_combo[]   = {KC_Z, KC_X, COMBO_END};
+const uint16_t PROGMEM bslh_combo[]   = {KC_SLSH, KC_QUOT, COMBO_END};
 
 combo_t key_combos[COMBO_COUNT] = {
     COMBO(lparen_combo, KC_LPRN),
@@ -229,18 +229,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                     return false;
                 }
                 break;
-            case Z_L1:
-                if (elapsed < RPI_Z) {
-                    tap_code(KC_Z);
-                    return false;
-                }
-                break;
-            case SL_L2:
-                if (elapsed < RPI_SLASH) {
-                    tap_code(KC_SLSH);
-                    return false;
-                }
-                break;
             case ESC_L2:
                 if (elapsed < RPI_ESC) {
                     tap_code(KC_ESC);
@@ -250,6 +238,30 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             case MIN_L1:
                 if (elapsed < RPI_MINUS) {
                     tap_code(KC_MINS);
+                    return false;
+                }
+                break;
+            case CT_GRV:
+                if (elapsed < RPI_CTRL) {
+                    tap_code(KC_GRV);
+                    return false;
+                }
+                break;
+            case CT_BSL:
+                if (elapsed < RPI_CTRL) {
+                    tap_code(KC_BSLS);
+                    return false;
+                }
+                break;
+            case AL_DEL:
+                if (elapsed < RPI_ALT) {
+                    tap_code(KC_DEL);
+                    return false;
+                }
+                break;
+            case AL_ENT:
+                if (elapsed < RPI_ALT) {
+                    tap_code(KC_ENT);
                     return false;
                 }
                 break;
@@ -265,8 +277,6 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case GU_BSP:  return 100;
         case GU_SPC:  return 150;
-        case Z_L1:
-        case SL_L2:   return 120;
         case AL_DEL:
         case AL_ENT:  return 130;
         default:       return TAPPING_TERM;
@@ -277,21 +287,16 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
 bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case ESC_L2:
-        case Z_L1:
         case MIN_L1:
-        case SL_L2:
             return true;
         default:
             return false;
     }
 }
 
-// ── Per-key hold on other key press (yeet only) ──
+// ── Per-key hold on other key press — disabled for all keys ──
 bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_BSP: return true;
-        default:      return false;
-    }
+    return false;
 }
 
 // ── Per-key retro tapping — disabled to prevent unintended tap action
@@ -304,8 +309,6 @@ bool get_retro_tapping(uint16_t keycode, keyrecord_t *record) {
 uint16_t get_quick_tap_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case GU_SPC:  return 90;
-        case Z_L1:
-        case SL_L2:   return 80;
         default:       return QUICK_TAP_TERM;
     }
 }
