@@ -6,7 +6,8 @@
 #endif
 
 // ── State for require-prior-idle ──
-static uint16_t last_key_time = 0;
+// (last_key_time removed: using last_input_activity_elapsed() instead, which
+//  is synced from both halves via SPLIT_ACTIVITY_ENABLE, fixing cross-half RPI)
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};
@@ -213,8 +214,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
 #endif
 
-        // Require-prior-idle handling
-        uint16_t elapsed = timer_elapsed(last_key_time);
+        // Require-prior-idle: force tap if pressed too soon after any recent
+        // activity on either half. SPLIT_ACTIVITY_ENABLE synchronizes the
+        // underlying activity timestamp from the slave to the master at the
+        // transport level, so last_input_activity_elapsed() reflects the most
+        // recent keypress on either half — not just the master side.
+        uint32_t elapsed = last_input_activity_elapsed();
 
         switch (keycode) {
             case GU_SPC:
@@ -266,8 +271,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 }
                 break;
         }
-
-        last_key_time = timer_read();
     }
     return true;
 }
