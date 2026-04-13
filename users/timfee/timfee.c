@@ -481,26 +481,26 @@ bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
         switch (layer) {
             case 1:
                 if (led_in_set(i, L1_SYMBOL_LEDS, sizeof(L1_SYMBOL_LEDS))) {
-                    rgb_matrix_set_color(i, 0, 255, 0);        // bright green
+                    rgb_matrix_set_color(i, 0, 255, 0);        // bright green (symbols)
                 } else if (led_in_set(i, L1_NUMBER_LEDS, sizeof(L1_NUMBER_LEDS))) {
-                    rgb_matrix_set_color(i, 255, 0, 0);        // bright red
+                    rgb_matrix_set_color(i, 255, 0, 0);        // bright red (numbers)
                 } else {
-                    rgb_matrix_set_color(i, 200, 0, 0);        // base red
+                    rgb_matrix_set_color(i, 200, 0, 0);        // dim red (inactive)
                 }
                 break;
 
             case 2:
                 if (led_in_set(i, L2_FKEY_LEDS, sizeof(L2_FKEY_LEDS))) {
-                    rgb_matrix_set_color(i, 148, 0, 211);      // purple
+                    rgb_matrix_set_color(i, 148, 0, 211);      // purple (F-keys)
                 } else if (led_in_set(i, L2_ARROW_LEDS, sizeof(L2_ARROW_LEDS))) {
-                    rgb_matrix_set_color(i, 0, 0, 255);        // bright blue
+                    rgb_matrix_set_color(i, 0, 0, 255);        // bright blue (arrows)
                 } else {
-                    rgb_matrix_set_color(i, 200, 0, 0);        // base red
+                    rgb_matrix_set_color(i, 200, 0, 0);        // dim red (inactive)
                 }
                 break;
 
             default:
-                rgb_matrix_set_color(i, 200, 0, 0);            // solid red
+                rgb_matrix_set_color(i, 200, 0, 0);            // solid red (base layer)
                 break;
         }
     }
