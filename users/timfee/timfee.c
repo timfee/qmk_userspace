@@ -36,10 +36,6 @@ combo_t key_combos[COMBO_COUNT] = {
 
 static const uint8_t OLED_WIDTH = OLED_DISPLAY_HEIGHT;
 
-static const char PROGMEM QMK_LOGO_1[] = { 0x81, 0x82, 0x83, 0x84, 0x00 };
-static const char PROGMEM QMK_LOGO_2[] = { 0xA1, 0xA2, 0xA3, 0xA4, 0x00 };
-static const char PROGMEM QMK_LOGO_3[] = { 0xC1, 0xC2, 0xC3, 0xC4, 0x00 };
-
 typedef struct { bool oled_on; }    oled_state_m2s_t;
 typedef struct { uint16_t keycode; } lastkey_m2s_t;
 typedef struct { uint32_t left; uint32_t right; } presses_m2s_t;
@@ -87,6 +83,21 @@ static void oled_print_right_aligned(const char *text, uint8_t width) {
     uint8_t pad = (len < width) ? (width - len) : 0;
     for (uint8_t i = 0; i < pad; i++) oled_write_P(PSTR(" "), false);
     oled_write(text, false);
+}
+
+// ── Large digit renderer (32×32 bitmap, centered) ──
+static void render_large_layer_digit(uint8_t start_page) {
+    uint8_t layer = get_highest_layer(layer_state);
+    if (layer > 9) layer = 9;
+    const char *bitmap = (const char *)pgm_read_ptr(&LARGE_DIGITS[layer]);
+    uint8_t x_offset = (OLED_WIDTH - LARGE_DIGIT_WIDTH) / 2;
+    for (uint8_t page = 0; page < LARGE_DIGIT_PAGES; page++) {
+        for (uint8_t col = 0; col < LARGE_DIGIT_WIDTH; col++) {
+            oled_write_raw_byte(
+                pgm_read_byte(&bitmap[page * LARGE_DIGIT_WIDTH + col]),
+                (start_page + page) * OLED_WIDTH + x_offset + col);
+        }
+    }
 }
 
 // ── Info renderers ──
@@ -402,11 +413,8 @@ bool oled_task_user(void) {
         oled_print_right_aligned(get_keycode_string(unwrap_keycode(g_last_keycode)),
                                  g_oled_max_char);
 
-        // QMK logo
-        oled_set_cursor(0, 13);  oled_write_P(QMK_LOGO_1, false);
-        oled_set_cursor(0, 14);  oled_write_P(QMK_LOGO_2, false);
-        oled_set_cursor(0, 15);  oled_write_P(QMK_LOGO_3, false);
-        oled_set_cursor(7, 15);  oled_write_P(PSTR("QMK"), false);
+        // Large layer digit (centered, pages 12–15)
+        render_large_layer_digit(12);
     }
     // ── Right half ──
     else {
@@ -424,14 +432,80 @@ bool oled_task_user(void) {
         oled_write_P(PSTR("Right:"), false);
         print_balance(8, pct_right);
 
-        // QMK logo
-        oled_set_cursor(0, 13);  oled_write_P(QMK_LOGO_1, false);
-        oled_set_cursor(0, 14);  oled_write_P(QMK_LOGO_2, false);
-        oled_set_cursor(0, 15);  oled_write_P(QMK_LOGO_3, false);
-        oled_set_cursor(7, 15);  oled_write_P(PSTR("QMK"), false);
+        // Large layer digit (centered, pages 12–15)
+        render_large_layer_digit(12);
     }
 
     return false;
 }
 
 #endif // OLED_ENABLE
+
+// ═══════════════════════════════════════════════════════════════════
+// RGB Matrix – per-layer LED colours
+// ═══════════════════════════════════════════════════════════════════
+#ifdef RGB_MATRIX_ENABLE
+
+// LED indices derived from keyboard.json rgb_matrix.layout
+// Left half (0-22) – matrix position → LED index:
+//   [3,5]=0  [2,5]=1  [1,5]=2  [0,5]=3  [0,4]=4  [1,4]=5  [2,4]=6
+//   [3,4]=7  [3,3]=8  [2,3]=9  [1,3]=10 [0,3]=11 [0,2]=12 [1,2]=13
+//   [2,2]=14 [2,1]=15 [1,1]=16 [0,1]=17 [0,0]=18 [1,0]=19 [2,0]=20
+//   [0,6]=21 [1,6]=22
+// Right half (23-45):
+//   [7,5]=23 [6,5]=24 [5,5]=25 [4,5]=26 [4,4]=27 [5,4]=28 [6,4]=29
+//   [7,4]=30 [7,3]=31 [6,3]=32 [5,3]=33 [4,3]=34 [4,2]=35 [5,2]=36
+//   [6,2]=37 [6,1]=38 [5,1]=39 [4,1]=40 [4,0]=41 [5,0]=42 [6,0]=43
+//   [4,6]=44 [5,6]=45
+
+// Layer 1: left-side symbol keys (!, @, #, $, %, ^, &, *, (, ))
+static const uint8_t L1_SYMBOL_LEDS[] = { 17, 12, 11, 4, 3, 16, 13, 10, 5, 2 };
+// Layer 1: right-side number keys (7-9, 4-6, 1-3, comma/0/dot on thumbs)
+static const uint8_t L1_NUMBER_LEDS[] = { 26, 27, 34, 25, 28, 33, 24, 29, 32, 23, 30, 31 };
+// Layer 2: left-side F-keys (F1-F10)
+static const uint8_t L2_FKEY_LEDS[] = { 17, 12, 11, 4, 3, 16, 13, 10, 5, 2 };
+// Layer 2: right-side arrow keys (all 3 rows: alt-arrows, arrows, gui-arrows)
+static const uint8_t L2_ARROW_LEDS[] = { 26, 27, 34, 35, 25, 28, 33, 36, 24, 29, 32, 37 };
+
+static inline bool led_in_set(uint8_t led, const uint8_t *set, uint8_t count) {
+    for (uint8_t j = 0; j < count; j++) {
+        if (set[j] == led) return true;
+    }
+    return false;
+}
+
+bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
+    uint8_t layer = get_highest_layer(layer_state);
+
+    for (uint8_t i = led_min; i < led_max; i++) {
+        switch (layer) {
+            case 1:
+                if (led_in_set(i, L1_SYMBOL_LEDS, sizeof(L1_SYMBOL_LEDS))) {
+                    rgb_matrix_set_color(i, 0, 255, 0);        // bright green
+                } else if (led_in_set(i, L1_NUMBER_LEDS, sizeof(L1_NUMBER_LEDS))) {
+                    rgb_matrix_set_color(i, 255, 0, 0);        // bright red
+                } else {
+                    rgb_matrix_set_color(i, 200, 0, 0);        // base red
+                }
+                break;
+
+            case 2:
+                if (led_in_set(i, L2_FKEY_LEDS, sizeof(L2_FKEY_LEDS))) {
+                    rgb_matrix_set_color(i, 148, 0, 211);      // purple
+                } else if (led_in_set(i, L2_ARROW_LEDS, sizeof(L2_ARROW_LEDS))) {
+                    rgb_matrix_set_color(i, 0, 0, 255);        // bright blue
+                } else {
+                    rgb_matrix_set_color(i, 200, 0, 0);        // base red
+                }
+                break;
+
+            default:
+                rgb_matrix_set_color(i, 200, 0, 0);            // solid red
+                break;
+        }
+    }
+
+    return false;
+}
+
+#endif // RGB_MATRIX_ENABLE
