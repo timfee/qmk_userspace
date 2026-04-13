@@ -294,12 +294,10 @@ bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
     }
 }
 
-// ── Per-key retro tapping (yeet only) ──
+// ── Per-key retro tapping — disabled to prevent unintended tap action
+// firing after modifier-only holds (e.g. Cmd+click in apps like Figma) ──
 bool get_retro_tapping(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_BSP: return true;
-        default:      return false;
-    }
+    return false;
 }
 
 // ── Per-key quick tap term ──

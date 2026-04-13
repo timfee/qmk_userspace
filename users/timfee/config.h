@@ -7,8 +7,6 @@
 #define QUICK_TAP_TERM_PER_KEY
 #define PERMISSIVE_HOLD_PER_KEY
 #define HOLD_ON_OTHER_KEY_PRESS_PER_KEY
-#define RETRO_TAPPING
-#define RETRO_TAPPING_PER_KEY
 
 // ── Combos ──
 #define COMBO_COUNT 8
