@@ -6,8 +6,16 @@
 #endif
 
 // ── State for require-prior-idle ──
-// (last_key_time removed: using last_input_activity_elapsed() instead, which
-//  is synced from both halves via SPLIT_ACTIVITY_ENABLE, fixing cross-half RPI)
+// Manual timestamp of the last key processed through process_record_user.
+// This is intentionally NOT last_input_activity_elapsed() — that API reflects
+// the most recent matrix scan change, which includes the current mod-tap key's
+// OWN press. Since process_record_user fires ~tapping_term ms after the
+// physical press (after tap/hold resolution), the elapsed time would always be
+// ≈ tapping_term, which is less than the RPI thresholds — killing every hold.
+// A manual variable updated at the END of process_record_user correctly
+// captures the previous key's timing. This works for both halves because QMK
+// split processes all key events on the master side.
+static uint16_t last_key_time = 0;
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};
@@ -214,12 +222,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
 #endif
 
-        // Require-prior-idle: force tap if pressed too soon after any recent
-        // activity on either half. SPLIT_ACTIVITY_ENABLE synchronizes the
-        // underlying activity timestamp from the slave to the master at the
-        // transport level, so last_input_activity_elapsed() reflects the most
-        // recent keypress on either half — not just the master side.
-        uint32_t elapsed = last_input_activity_elapsed();
+        // Require-prior-idle: force tap if pressed too soon after last key
+        uint16_t elapsed = timer_elapsed(last_key_time);
 
         switch (keycode) {
             case GU_SPC:
@@ -271,6 +275,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 }
                 break;
         }
+
+        last_key_time = timer_read();
     }
     return true;
 }
