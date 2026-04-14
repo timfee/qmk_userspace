@@ -266,13 +266,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 // ── Per-key tapping term ──
 uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_BSP:  return 100;
-        case GU_SPC:  return 150;
-        case AL_DEL:
-        case AL_ENT:  return 130;
-        default:       return TAPPING_TERM;
-    }
+    return TAPPING_TERM;
 }
 
 // ── Per-key hold on other key press ──
@@ -289,10 +283,7 @@ bool get_retro_tapping(uint16_t keycode, keyrecord_t *record) {
 
 // ── Per-key quick tap term ──
 uint16_t get_quick_tap_term(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_SPC:  return 90;
-        default:       return QUICK_TAP_TERM;
-    }
+    return QUICK_TAP_TERM;
 }
 
 // ═══════════════════════════════════════════════════════════════════

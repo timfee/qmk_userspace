@@ -1,9 +1,9 @@
 #pragma once
 
 // ── Tap-hold ──
-#define TAPPING_TERM 150
+#define TAPPING_TERM 175
 #define TAPPING_TERM_PER_KEY
-#define QUICK_TAP_TERM 90
+#define QUICK_TAP_TERM 130
 #define QUICK_TAP_TERM_PER_KEY
 #define CHORDAL_HOLD
 #define HOLD_ON_OTHER_KEY_PRESS_PER_KEY
