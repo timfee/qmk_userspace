@@ -19,6 +19,7 @@
 // tag the key position. Later, when process_record_user fires at resolution
 // time, we check the tag and force-tap if it was flagged.
 static uint16_t rpi_prev_press_time = 0;
+static uint8_t  rpi_prev_press_row  = 255;
 static bool     rpi_force_tap       = false;
 static uint8_t  rpi_force_tap_row   = 255;
 static uint8_t  rpi_force_tap_col   = 255;
@@ -209,20 +210,35 @@ void housekeeping_task_user(void) {
 // pre_process_record_user fires at the physical keypress moment, BEFORE the
 // tapping state machine buffers the key. This is the correct place to measure
 // inter-key timing for RPI.
+//
+// RPI only applies when the current key is on the SAME HAND as the previous
+// key. Cross-hand sequences (e.g. right-thumb space → left-thumb CMD+V) skip
+// RPI because accidental mod-holds from cross-hand rolling are rare and
+// permissive_hold already guards against them.
 bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (record->event.pressed) {
         uint16_t elapsed = timer_elapsed(rpi_prev_press_time);
 
+        // Determine if this key is on the same hand as the previous key
+        bool same_hand = false;
+        if (rpi_prev_press_row != 255) {
+            bool prev_left = rpi_prev_press_row < MATRIX_ROWS / 2;
+            bool curr_left = record->event.key.row < MATRIX_ROWS / 2;
+            same_hand = (prev_left == curr_left);
+        }
+
         uint16_t threshold = 0;
-        switch (keycode) {
-            case GU_SPC: threshold = RPI_SPACE; break;
-            case GU_BSP: threshold = RPI_BKSP;  break;
-            case ESC_L2: threshold = RPI_ESC;   break;
-            case MIN_L1: threshold = RPI_MINUS; break;
-            case CT_GRV: threshold = RPI_CTRL;  break;
-            case CT_BSL: threshold = RPI_CTRL;  break;
-            case AL_DEL: threshold = RPI_ALT;   break;
-            case AL_ENT: threshold = RPI_ALT;   break;
+        if (same_hand) {
+            switch (keycode) {
+                case GU_SPC: threshold = RPI_SPACE; break;
+                case GU_BSP: threshold = RPI_BKSP;  break;
+                case ESC_L2: threshold = RPI_ESC;   break;
+                case MIN_L1: threshold = RPI_MINUS; break;
+                case CT_GRV: threshold = RPI_CTRL;  break;
+                case CT_BSL: threshold = RPI_CTRL;  break;
+                case AL_DEL: threshold = RPI_ALT;   break;
+                case AL_ENT: threshold = RPI_ALT;   break;
+            }
         }
 
         if (threshold > 0 && elapsed < threshold) {
@@ -232,6 +248,7 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
 
         rpi_prev_press_time = timer_read();
+        rpi_prev_press_row  = record->event.key.row;
     }
     return true;
 }
