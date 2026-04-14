@@ -5,17 +5,23 @@
 #include "transactions.h"
 #endif
 
-// ── State for require-prior-idle ──
-// Manual timestamp of the last key processed through process_record_user.
-// This is intentionally NOT last_input_activity_elapsed() — that API reflects
-// the most recent matrix scan change, which includes the current mod-tap key's
-// OWN press. Since process_record_user fires ~tapping_term ms after the
-// physical press (after tap/hold resolution), the elapsed time would always be
-// ≈ tapping_term, which is less than the RPI thresholds — killing every hold.
-// A manual variable updated at the END of process_record_user correctly
-// captures the previous key's timing. This works for both halves because QMK
-// split processes all key events on the master side.
-static uint16_t last_key_time = 0;
+// ── State for require-prior-idle (RPI) ──
+// RPI must measure inter-key timing at PHYSICAL PRESS time, not at tap/hold
+// resolution time. For mod-tap keys, process_record_user fires only after
+// action_tapping.c resolves the key (≈tapping_term ms later), so any timing
+// measured there is wrong:
+//   - last_input_activity_elapsed() ≈ tapping_term → always < threshold → holds never work
+//   - manual timer in process_record_user → skipped on return-false paths → stale timing
+//     causes the NEXT key to miss RPI and let QMK resolve as hold (CMD+key leak)
+//
+// Fix: pre_process_record_user fires at physical press (before the tapping
+// state machine buffers the key). We capture the inter-key elapsed there and
+// tag the key position. Later, when process_record_user fires at resolution
+// time, we check the tag and force-tap if it was flagged.
+static uint16_t rpi_prev_press_time = 0;
+static bool     rpi_force_tap       = false;
+static uint8_t  rpi_force_tap_row   = 255;
+static uint8_t  rpi_force_tap_col   = 255;
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};
@@ -199,6 +205,37 @@ void housekeeping_task_user(void) {
 }
 #endif // OLED_ENABLE
 
+// ── Require-prior-idle: physical-press timing ──
+// pre_process_record_user fires at the physical keypress moment, BEFORE the
+// tapping state machine buffers the key. This is the correct place to measure
+// inter-key timing for RPI.
+bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (record->event.pressed) {
+        uint16_t elapsed = timer_elapsed(rpi_prev_press_time);
+
+        uint16_t threshold = 0;
+        switch (keycode) {
+            case GU_SPC: threshold = RPI_SPACE; break;
+            case GU_BSP: threshold = RPI_BKSP;  break;
+            case ESC_L2: threshold = RPI_ESC;   break;
+            case MIN_L1: threshold = RPI_MINUS; break;
+            case CT_GRV: threshold = RPI_CTRL;  break;
+            case CT_BSL: threshold = RPI_CTRL;  break;
+            case AL_DEL: threshold = RPI_ALT;   break;
+            case AL_ENT: threshold = RPI_ALT;   break;
+        }
+
+        if (threshold > 0 && elapsed < threshold) {
+            rpi_force_tap     = true;
+            rpi_force_tap_row = record->event.key.row;
+            rpi_force_tap_col = record->event.key.col;
+        }
+
+        rpi_prev_press_time = timer_read();
+    }
+    return true;
+}
+
 // ── Require-prior-idle + OLED keypress tracking ──
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 #ifdef OLED_ENABLE
@@ -222,61 +259,32 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
 #endif
 
-        // Require-prior-idle: force tap if pressed too soon after last key
-        uint16_t elapsed = timer_elapsed(last_key_time);
+        // Require-prior-idle: if pre_process_record_user flagged this key
+        // for force-tap (pressed too soon after the previous physical keypress),
+        // send the tap keycode now and suppress QMK's mod-tap/layer-tap handling.
+        if (rpi_force_tap &&
+            record->event.key.row == rpi_force_tap_row &&
+            record->event.key.col == rpi_force_tap_col) {
+            rpi_force_tap     = false;
+            rpi_force_tap_row = 255;
+            rpi_force_tap_col = 255;
 
-        switch (keycode) {
-            case GU_SPC:
-                if (elapsed < RPI_SPACE) {
-                    tap_code(KC_SPC);
-                    return false;
-                }
-                break;
-            case GU_BSP:
-                if (elapsed < RPI_BKSP) {
-                    tap_code(KC_BSPC);
-                    return false;
-                }
-                break;
-            case ESC_L2:
-                if (elapsed < RPI_ESC) {
-                    tap_code(KC_ESC);
-                    return false;
-                }
-                break;
-            case MIN_L1:
-                if (elapsed < RPI_MINUS) {
-                    tap_code(KC_MINS);
-                    return false;
-                }
-                break;
-            case CT_GRV:
-                if (elapsed < RPI_CTRL) {
-                    tap_code(KC_GRV);
-                    return false;
-                }
-                break;
-            case CT_BSL:
-                if (elapsed < RPI_CTRL) {
-                    tap_code(KC_BSLS);
-                    return false;
-                }
-                break;
-            case AL_DEL:
-                if (elapsed < RPI_ALT) {
-                    tap_code(KC_DEL);
-                    return false;
-                }
-                break;
-            case AL_ENT:
-                if (elapsed < RPI_ALT) {
-                    tap_code(KC_ENT);
-                    return false;
-                }
-                break;
+            uint16_t tap_kc = KC_NO;
+            switch (keycode) {
+                case GU_SPC: tap_kc = KC_SPC;  break;
+                case GU_BSP: tap_kc = KC_BSPC; break;
+                case ESC_L2: tap_kc = KC_ESC;  break;
+                case MIN_L1: tap_kc = KC_MINS; break;
+                case CT_GRV: tap_kc = KC_GRV;  break;
+                case CT_BSL: tap_kc = KC_BSLS; break;
+                case AL_DEL: tap_kc = KC_DEL;  break;
+                case AL_ENT: tap_kc = KC_ENT;  break;
+            }
+            if (tap_kc != KC_NO) {
+                tap_code(tap_kc);
+                return false;
+            }
         }
-
-        last_key_time = timer_read();
     }
     return true;
 }
