@@ -28,7 +28,6 @@ const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = {
 bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
                       uint16_t other_keycode, keyrecord_t *other_record) {
     if (IS_QK_LAYER_TAP(tap_hold_keycode)) return true;
-    if (IS_QK_MOD_TAP(tap_hold_keycode)) return true;
     return get_chordal_hold_default(tap_hold_record, other_record);
 }
 
@@ -244,8 +243,12 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     return TAPPING_TERM;
 }
 
+// ── Per-key permissive hold (mod-taps only) ──
+bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
+    return IS_QK_MOD_TAP(keycode);
+}
+
 // ── Per-key hold on other key press ──
-// Disabled; chordal hold handles the opposite-hands rule.
 bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
     return false;
 }
