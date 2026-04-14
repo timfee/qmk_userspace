@@ -321,22 +321,14 @@ bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
 }
 
 // ── Per-key hold on other key press ──
-// Enabled for thumb mod-tap keys so shortcuts like CMD+Z, CMD+SHIFT+V
-// resolve immediately when the next key is pressed (no need to wait for
-// tapping_term to expire).  The RPI guard in pre_process_record_user
-// still prevents accidental modifier activation during fast typing.
+// Disabled for all keys. We rely on permissive_hold instead, which only
+// resolves as hold when another key completes a full tap (press+release)
+// within the hold — not just a press. This prevents the "release overlap"
+// problem where rolling from a quick backspace tap into the next letter
+// triggers CMD+letter instead of backspace+letter, while still making
+// shortcuts like CMD+Z and CMD+SHIFT+V reliable (they are nested taps).
 bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_BSP:
-        case GU_SPC:
-        case CT_GRV:
-        case CT_BSL:
-        case AL_DEL:
-        case AL_ENT:
-            return true;
-        default:
-            return false;
-    }
+    return false;
 }
 
 // ── Per-key retro tapping — disabled to prevent unintended tap action
