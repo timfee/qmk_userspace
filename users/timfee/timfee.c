@@ -300,20 +300,43 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     }
 }
 
-// ── Per-key permissive hold (pinky layer-taps only) ──
+// ── Per-key permissive hold ──
+// Layer-taps (pinky keys) and thumb mod-taps benefit from permissive
+// hold: a nested tap (press+release another key within the hold)
+// immediately selects the hold action.
 bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case ESC_L2:
         case MIN_L1:
+        case GU_BSP:
+        case GU_SPC:
+        case CT_GRV:
+        case CT_BSL:
+        case AL_DEL:
+        case AL_ENT:
             return true;
         default:
             return false;
     }
 }
 
-// ── Per-key hold on other key press — disabled for all keys ──
+// ── Per-key hold on other key press ──
+// Enabled for thumb mod-tap keys so shortcuts like CMD+Z, CMD+SHIFT+V
+// resolve immediately when the next key is pressed (no need to wait for
+// tapping_term to expire).  The RPI guard in pre_process_record_user
+// still prevents accidental modifier activation during fast typing.
 bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
-    return false;
+    switch (keycode) {
+        case GU_BSP:
+        case GU_SPC:
+        case CT_GRV:
+        case CT_BSL:
+        case AL_DEL:
+        case AL_ENT:
+            return true;
+        default:
+            return false;
+    }
 }
 
 // ── Per-key retro tapping — disabled to prevent unintended tap action
