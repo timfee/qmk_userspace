@@ -1,24 +1,16 @@
 # QMK Userspace — Keebart Corne Choc Pro
 
-## Setup
+QMK userspace overlay for the Keebart Corne Choc Pro. Builds against
+[Keebart/vial-qmk-corne-choc-pro](https://github.com/Keebart/vial-qmk-corne-choc-pro) (vial branch).
 
-1. Use [qmk/qmk_userspace](https://github.com/qmk/qmk_userspace) as a template to create your repo
-2. Clone your new repo
-3. Unzip this into it
-4. Add the Keebart fork as a submodule:
+GitHub Actions builds the `.uf2` automatically on push — download from the **Releases** tab.
 
-```bash
-git submodule add https://github.com/Keebart/vial-qmk-corne-choc-pro.git qmk_firmware
-git submodule update --init --recursive
-```
+Flash: hold **Q** while plugging in the left half, drag `.uf2` onto `RPI-RP2`. Repeat with **P** for the right half.
 
-5. Commit and push:
+## Local builds
 
 ```bash
-git add .
-git commit -m "Initial keymap"
-git push
+pip install qmk
+qmk setup -H . --home $(pwd)/qmk_firmware
+qmk compile -kb keebart/corne_choc_pro/standard -km timfee
 ```
-
-6. GitHub Actions builds the .uf2 — download from the Releases tab
-7. Flash: hold Q while plugging in left half, drag .uf2 onto RPI-RP2. Repeat with P for right.

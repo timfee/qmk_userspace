@@ -5,8 +5,57 @@
 #include "transactions.h"
 #endif
 
-// ── State for require-prior-idle ──
-static uint16_t last_key_time = 0;
+// ── Chordal Hold layout ──
+// Defines hand assignments for the "opposite hands" tap-hold rule.
+// 'L' = left hand, 'R' = right hand.
+// Thumbs are assigned to their physical hand so that same-hand fast
+// typing (e.g. backspace → A) resolves as tap, while cross-hand
+// shortcuts (e.g. left-thumb CMD + right-hand key) resolve as hold.
+// Matrix: 8 rows × 7 cols (4 rows per half, split keyboard).
+//   Rows 0-2: left finger rows    Rows 4-6: right finger rows
+//   Row 3:    left thumb           Row 7:    right thumb
+const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = {
+    {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 0: left top
+    {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 1: left mid
+    {'L', 'L', 'L', 'L', 'L', 'L',  0 },  // row 2: left bot
+    { 0,   0,   0,  'L', 'L', 'L',  0 },  // row 3: left thumb
+    {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 4: right top
+    {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 5: right mid
+    {'R', 'R', 'R', 'R', 'R', 'R',  0 },  // row 6: right bot
+    { 0,   0,   0,  'R', 'R', 'R',  0 },  // row 7: right thumb
+};
+
+// ── Chordal Hold per-key override ──
+// Layer-tap keys always resolve as hold so the layer activates for
+// same-hand keys.  Cross-hand mod-tap chords always resolve as hold.
+// Same-hand mod-tap chords use a timing heuristic: if the other key
+// arrives within 150 ms of the tap-hold key press it is a fast typing
+// roll (tap); otherwise the user is deliberately holding a modifier
+// for a shortcut like Cmd+V or Cmd+Shift+V (hold).
+#define CHORDAL_SAME_HAND_MS 150
+
+bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
+                      uint16_t other_keycode, keyrecord_t *other_record) {
+    // Layer-tap: always hold (layers need same-hand access).
+    if (IS_QK_LAYER_TAP(tap_hold_keycode)) {
+        return true;
+    }
+
+    // Cross-hand: always hold (standard chordal behaviour).
+    if (get_chordal_hold_default(tap_hold_record, other_record)) {
+        return true;
+    }
+
+    // Same-hand mod-tap: timing decides tap vs hold.
+    if (IS_QK_MOD_TAP(tap_hold_keycode)) {
+        uint16_t elapsed =
+            other_record->event.time - tap_hold_record->event.time;
+        return elapsed >= CHORDAL_SAME_HAND_MS;
+    }
+
+    // Any other same-hand combo: tap.
+    return false;
+}
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};
@@ -15,8 +64,8 @@ const uint16_t PROGMEM lbkt_combo[]   = {KC_F, KC_G, COMBO_END};
 const uint16_t PROGMEM rbkt_combo[]   = {KC_H, KC_J, COMBO_END};
 const uint16_t PROGMEM lbrace_combo[] = {KC_V, KC_B, COMBO_END};
 const uint16_t PROGMEM rbrace_combo[] = {KC_N, KC_M, COMBO_END};
-const uint16_t PROGMEM pipe_combo[]   = {Z_L1, KC_X, COMBO_END};
-const uint16_t PROGMEM bslh_combo[]   = {SL_L2, KC_QUOT, COMBO_END};
+const uint16_t PROGMEM pipe_combo[]   = {KC_Z, KC_X, COMBO_END};
+const uint16_t PROGMEM bslh_combo[]   = {KC_SLSH, KC_QUOT, COMBO_END};
 
 combo_t key_combos[COMBO_COUNT] = {
     COMBO(lparen_combo, KC_LPRN),
@@ -35,10 +84,6 @@ combo_t key_combos[COMBO_COUNT] = {
 #ifdef OLED_ENABLE
 
 static const uint8_t OLED_WIDTH = OLED_DISPLAY_HEIGHT;
-
-static const char PROGMEM QMK_LOGO_1[] = { 0x81, 0x82, 0x83, 0x84, 0x00 };
-static const char PROGMEM QMK_LOGO_2[] = { 0xA1, 0xA2, 0xA3, 0xA4, 0x00 };
-static const char PROGMEM QMK_LOGO_3[] = { 0xC1, 0xC2, 0xC3, 0xC4, 0x00 };
 
 typedef struct { bool oled_on; }    oled_state_m2s_t;
 typedef struct { uint16_t keycode; } lastkey_m2s_t;
@@ -87,6 +132,21 @@ static void oled_print_right_aligned(const char *text, uint8_t width) {
     uint8_t pad = (len < width) ? (width - len) : 0;
     for (uint8_t i = 0; i < pad; i++) oled_write_P(PSTR(" "), false);
     oled_write(text, false);
+}
+
+// ── Large digit renderer (32×32 bitmap, centered) ──
+static void render_large_layer_digit(uint8_t start_page) {
+    uint8_t layer = get_highest_layer(layer_state);
+    if (layer > 9) layer = 9;
+    const char *bitmap = (const char *)pgm_read_ptr(&LARGE_DIGITS[layer]);
+    uint8_t x_offset = (OLED_WIDTH - LARGE_DIGIT_WIDTH) / 2;
+    for (uint8_t page = 0; page < LARGE_DIGIT_PAGES; page++) {
+        for (uint8_t col = 0; col < LARGE_DIGIT_WIDTH; col++) {
+            oled_write_raw_byte(
+                pgm_read_byte(&bitmap[page * LARGE_DIGIT_WIDTH + col]),
+                (start_page + page) * OLED_WIDTH + x_offset + col);
+        }
+    }
 }
 
 // ── Info renderers ──
@@ -179,7 +239,7 @@ void housekeeping_task_user(void) {
 }
 #endif // OLED_ENABLE
 
-// ── Require-prior-idle + OLED keypress tracking ──
+// ── OLED keypress tracking ──
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 #ifdef OLED_ENABLE
     g_user_ontime = timer_read32();
@@ -187,7 +247,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
     if (record->event.pressed) {
 #ifdef OLED_ENABLE
-        // Track every keypress for OLED (before RPI may intercept)
         g_last_keycode = keycode;
         if (record->event.key.row < MATRIX_ROWS / 2) {
             g_press_left++;
@@ -201,50 +260,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             (void)transaction_rpc_send(USER_SYNC_PRESSES, sizeof(ppkt), &ppkt);
         }
 #endif
-
-        // Require-prior-idle handling
-        uint16_t elapsed = timer_elapsed(last_key_time);
-
-        switch (keycode) {
-            case GU_SPC:
-                if (elapsed < RPI_SPACE) {
-                    tap_code(KC_SPC);
-                    return false;
-                }
-                break;
-            case GU_BSP:
-                if (elapsed < RPI_BKSP) {
-                    tap_code(KC_BSPC);
-                    return false;
-                }
-                break;
-            case Z_L1:
-                if (elapsed < RPI_Z) {
-                    tap_code(KC_Z);
-                    return false;
-                }
-                break;
-            case SL_L2:
-                if (elapsed < RPI_SLASH) {
-                    tap_code(KC_SLSH);
-                    return false;
-                }
-                break;
-            case ESC_L2:
-                if (elapsed < RPI_ESC) {
-                    tap_code(KC_ESC);
-                    return false;
-                }
-                break;
-            case MIN_L1:
-                if (elapsed < RPI_MINUS) {
-                    tap_code(KC_MINS);
-                    return false;
-                }
-                break;
-        }
-
-        last_key_time = timer_read();
     }
     return true;
 }
@@ -254,49 +269,28 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case GU_BSP:  return 100;
         case GU_SPC:  return 150;
-        case Z_L1:
-        case SL_L2:   return 120;
         case AL_DEL:
         case AL_ENT:  return 130;
         default:       return TAPPING_TERM;
     }
 }
 
-// ── Per-key permissive hold (pinky layer-taps only) ──
-bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case ESC_L2:
-        case Z_L1:
-        case MIN_L1:
-        case SL_L2:
-            return true;
-        default:
-            return false;
-    }
-}
-
-// ── Per-key hold on other key press (yeet only) ──
+// ── Per-key hold on other key press ──
+// Disabled; chordal hold handles the opposite-hands rule.
 bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_BSP: return true;
-        default:      return false;
-    }
+    return false;
 }
 
-// ── Per-key retro tapping (yeet only) ──
+// ── Per-key retro tapping — disabled to prevent unintended tap action
+// firing after modifier-only holds (e.g. Cmd+click in apps like Figma) ──
 bool get_retro_tapping(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case GU_BSP: return true;
-        default:      return false;
-    }
+    return false;
 }
 
 // ── Per-key quick tap term ──
 uint16_t get_quick_tap_term(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
         case GU_SPC:  return 90;
-        case Z_L1:
-        case SL_L2:   return 80;
         default:       return QUICK_TAP_TERM;
     }
 }
@@ -402,11 +396,8 @@ bool oled_task_user(void) {
         oled_print_right_aligned(get_keycode_string(unwrap_keycode(g_last_keycode)),
                                  g_oled_max_char);
 
-        // QMK logo
-        oled_set_cursor(0, 13);  oled_write_P(QMK_LOGO_1, false);
-        oled_set_cursor(0, 14);  oled_write_P(QMK_LOGO_2, false);
-        oled_set_cursor(0, 15);  oled_write_P(QMK_LOGO_3, false);
-        oled_set_cursor(7, 15);  oled_write_P(PSTR("QMK"), false);
+        // Large layer digit (centered, pages 12–15)
+        render_large_layer_digit(12);
     }
     // ── Right half ──
     else {
@@ -424,14 +415,80 @@ bool oled_task_user(void) {
         oled_write_P(PSTR("Right:"), false);
         print_balance(8, pct_right);
 
-        // QMK logo
-        oled_set_cursor(0, 13);  oled_write_P(QMK_LOGO_1, false);
-        oled_set_cursor(0, 14);  oled_write_P(QMK_LOGO_2, false);
-        oled_set_cursor(0, 15);  oled_write_P(QMK_LOGO_3, false);
-        oled_set_cursor(7, 15);  oled_write_P(PSTR("QMK"), false);
+        // Large layer digit (centered, pages 12–15)
+        render_large_layer_digit(12);
     }
 
     return false;
 }
 
 #endif // OLED_ENABLE
+
+// ═══════════════════════════════════════════════════════════════════
+// RGB Matrix – per-layer LED colours
+// ═══════════════════════════════════════════════════════════════════
+#ifdef RGB_MATRIX_ENABLE
+
+// LED indices derived from keyboard.json rgb_matrix.layout
+// Left half (0-22) – matrix position → LED index:
+//   [3,5]=0  [2,5]=1  [1,5]=2  [0,5]=3  [0,4]=4  [1,4]=5  [2,4]=6
+//   [3,4]=7  [3,3]=8  [2,3]=9  [1,3]=10 [0,3]=11 [0,2]=12 [1,2]=13
+//   [2,2]=14 [2,1]=15 [1,1]=16 [0,1]=17 [0,0]=18 [1,0]=19 [2,0]=20
+//   [0,6]=21 [1,6]=22
+// Right half (23-45):
+//   [7,5]=23 [6,5]=24 [5,5]=25 [4,5]=26 [4,4]=27 [5,4]=28 [6,4]=29
+//   [7,4]=30 [7,3]=31 [6,3]=32 [5,3]=33 [4,3]=34 [4,2]=35 [5,2]=36
+//   [6,2]=37 [6,1]=38 [5,1]=39 [4,1]=40 [4,0]=41 [5,0]=42 [6,0]=43
+//   [4,6]=44 [5,6]=45
+
+// Layer 1: left-side symbol keys (!, @, #, $, %, ^, &, *, (, ))
+static const uint8_t L1_SYMBOL_LEDS[] = { 17, 12, 11, 4, 3, 16, 13, 10, 5, 2 };
+// Layer 1: right-side number keys (7-9, 4-6, 1-3, comma/0/dot on thumbs)
+static const uint8_t L1_NUMBER_LEDS[] = { 26, 27, 34, 25, 28, 33, 24, 29, 32, 23, 30, 31 };
+// Layer 2: left-side F-keys (F1-F10)
+static const uint8_t L2_FKEY_LEDS[] = { 17, 12, 11, 4, 3, 16, 13, 10, 5, 2 };
+// Layer 2: right-side arrow keys (all 3 rows: alt-arrows, arrows, gui-arrows)
+static const uint8_t L2_ARROW_LEDS[] = { 26, 27, 34, 35, 25, 28, 33, 36, 24, 29, 32, 37 };
+
+static inline bool led_in_set(uint8_t led, const uint8_t *set, uint8_t count) {
+    for (uint8_t j = 0; j < count; j++) {
+        if (set[j] == led) return true;
+    }
+    return false;
+}
+
+bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
+    uint8_t layer = get_highest_layer(layer_state);
+
+    for (uint8_t i = led_min; i < led_max; i++) {
+        switch (layer) {
+            case 1:
+                if (led_in_set(i, L1_SYMBOL_LEDS, sizeof(L1_SYMBOL_LEDS))) {
+                    rgb_matrix_set_color(i, 0, 255, 0);        // bright green (symbols)
+                } else if (led_in_set(i, L1_NUMBER_LEDS, sizeof(L1_NUMBER_LEDS))) {
+                    rgb_matrix_set_color(i, 255, 0, 0);        // bright red (numbers)
+                } else {
+                    rgb_matrix_set_color(i, 200, 0, 0);        // dim red (inactive)
+                }
+                break;
+
+            case 2:
+                if (led_in_set(i, L2_FKEY_LEDS, sizeof(L2_FKEY_LEDS))) {
+                    rgb_matrix_set_color(i, 148, 0, 211);      // purple (F-keys)
+                } else if (led_in_set(i, L2_ARROW_LEDS, sizeof(L2_ARROW_LEDS))) {
+                    rgb_matrix_set_color(i, 0, 0, 255);        // bright blue (arrows)
+                } else {
+                    rgb_matrix_set_color(i, 200, 0, 0);        // dim red (inactive)
+                }
+                break;
+
+            default:
+                rgb_matrix_set_color(i, 200, 0, 0);            // solid red (base layer)
+                break;
+        }
+    }
+
+    return false;
+}
+
+#endif // RGB_MATRIX_ENABLE
