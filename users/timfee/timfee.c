@@ -5,24 +5,22 @@
 #include "transactions.h"
 #endif
 
-// ── State for require-prior-idle (RPI) ──
-// RPI must measure inter-key timing at PHYSICAL PRESS time, not at tap/hold
-// resolution time. For mod-tap keys, process_record_user fires only after
-// action_tapping.c resolves the key (≈tapping_term ms later), so any timing
-// measured there is wrong:
-//   - last_input_activity_elapsed() ≈ tapping_term → always < threshold → holds never work
-//   - manual timer in process_record_user → skipped on return-false paths → stale timing
-//     causes the NEXT key to miss RPI and let QMK resolve as hold (CMD+key leak)
-//
-// Fix: pre_process_record_user fires at physical press (before the tapping
-// state machine buffers the key). We capture the inter-key elapsed there and
-// tag the key position. Later, when process_record_user fires at resolution
-// time, we check the tag and force-tap if it was flagged.
-static uint16_t rpi_prev_press_time = 0;
-static uint8_t  rpi_prev_press_row  = 255;
-static bool     rpi_force_tap       = false;
-static uint8_t  rpi_force_tap_row   = 255;
-static uint8_t  rpi_force_tap_col   = 255;
+// ── Chordal Hold layout ──
+// Defines hand assignments for the "opposite hands" tap-hold rule.
+// 'L' = left hand, 'R' = right hand, '*' = either (thumb keys).
+// Matrix: 8 rows × 7 cols (4 rows per half, split keyboard).
+//   Rows 0-2: left finger rows    Rows 4-6: right finger rows
+//   Row 3:    left thumb           Row 7:    right thumb
+const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = {
+    {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 0: left top
+    {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 1: left mid
+    {'L', 'L', 'L', 'L', 'L', 'L', 0  },  // row 2: left bot
+    { 0,   0,   0,  '*', '*', '*',  0  },  // row 3: left thumb
+    {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 4: right top
+    {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 5: right mid
+    {'R', 'R', 'R', 'R', 'R', 'R',  0  },  // row 6: right bot
+    { 0,   0,   0,  '*', '*', '*',  0  },  // row 7: right thumb
+};
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};
@@ -206,54 +204,7 @@ void housekeeping_task_user(void) {
 }
 #endif // OLED_ENABLE
 
-// ── Require-prior-idle: physical-press timing ──
-// pre_process_record_user fires at the physical keypress moment, BEFORE the
-// tapping state machine buffers the key. This is the correct place to measure
-// inter-key timing for RPI.
-//
-// RPI only applies when the current key is on the SAME HAND as the previous
-// key. Cross-hand sequences (e.g. right-thumb space → left-thumb CMD+V) skip
-// RPI because accidental mod-holds from cross-hand rolling are rare and
-// permissive_hold already guards against them.
-bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
-    if (record->event.pressed) {
-        uint16_t elapsed = timer_elapsed(rpi_prev_press_time);
-
-        // Determine if this key is on the same hand as the previous key
-        bool same_hand = false;
-        if (rpi_prev_press_row != 255) {
-            bool prev_left = rpi_prev_press_row < MATRIX_ROWS / 2;
-            bool curr_left = record->event.key.row < MATRIX_ROWS / 2;
-            same_hand = (prev_left == curr_left);
-        }
-
-        uint16_t threshold = 0;
-        if (same_hand) {
-            switch (keycode) {
-                case GU_SPC: threshold = RPI_SPACE; break;
-                case GU_BSP: threshold = RPI_BKSP;  break;
-                case ESC_L2: threshold = RPI_ESC;   break;
-                case MIN_L1: threshold = RPI_MINUS; break;
-                case CT_GRV: threshold = RPI_CTRL;  break;
-                case CT_BSL: threshold = RPI_CTRL;  break;
-                case AL_DEL: threshold = RPI_ALT;   break;
-                case AL_ENT: threshold = RPI_ALT;   break;
-            }
-        }
-
-        if (threshold > 0 && elapsed < threshold) {
-            rpi_force_tap     = true;
-            rpi_force_tap_row = record->event.key.row;
-            rpi_force_tap_col = record->event.key.col;
-        }
-
-        rpi_prev_press_time = timer_read();
-        rpi_prev_press_row  = record->event.key.row;
-    }
-    return true;
-}
-
-// ── Require-prior-idle + OLED keypress tracking ──
+// ── OLED keypress tracking ──
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 #ifdef OLED_ENABLE
     g_user_ontime = timer_read32();
@@ -261,7 +212,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
     if (record->event.pressed) {
 #ifdef OLED_ENABLE
-        // Track every keypress for OLED (before RPI may intercept)
         g_last_keycode = keycode;
         if (record->event.key.row < MATRIX_ROWS / 2) {
             g_press_left++;
@@ -275,33 +225,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             (void)transaction_rpc_send(USER_SYNC_PRESSES, sizeof(ppkt), &ppkt);
         }
 #endif
-
-        // Require-prior-idle: if pre_process_record_user flagged this key
-        // for force-tap (pressed too soon after the previous physical keypress),
-        // send the tap keycode now and suppress QMK's mod-tap/layer-tap handling.
-        if (rpi_force_tap &&
-            record->event.key.row == rpi_force_tap_row &&
-            record->event.key.col == rpi_force_tap_col) {
-            rpi_force_tap     = false;
-            rpi_force_tap_row = 255;
-            rpi_force_tap_col = 255;
-
-            uint16_t tap_kc = KC_NO;
-            switch (keycode) {
-                case GU_SPC: tap_kc = KC_SPC;  break;
-                case GU_BSP: tap_kc = KC_BSPC; break;
-                case ESC_L2: tap_kc = KC_ESC;  break;
-                case MIN_L1: tap_kc = KC_MINS; break;
-                case CT_GRV: tap_kc = KC_GRV;  break;
-                case CT_BSL: tap_kc = KC_BSLS; break;
-                case AL_DEL: tap_kc = KC_DEL;  break;
-                case AL_ENT: tap_kc = KC_ENT;  break;
-            }
-            if (tap_kc != KC_NO) {
-                tap_code(tap_kc);
-                return false;
-            }
-        }
     }
     return true;
 }
@@ -317,33 +240,8 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
     }
 }
 
-// ── Per-key permissive hold ──
-// Layer-taps (pinky keys) and thumb mod-taps benefit from permissive
-// hold: a nested tap (press+release another key within the hold)
-// immediately selects the hold action.
-bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
-    switch (keycode) {
-        case ESC_L2:
-        case MIN_L1:
-        case GU_BSP:
-        case GU_SPC:
-        case CT_GRV:
-        case CT_BSL:
-        case AL_DEL:
-        case AL_ENT:
-            return true;
-        default:
-            return false;
-    }
-}
-
 // ── Per-key hold on other key press ──
-// Disabled for all keys. We rely on permissive_hold instead, which only
-// resolves as hold when another key completes a full tap (press+release)
-// within the hold — not just a press. This prevents the "release overlap"
-// problem where rolling from a quick backspace tap into the next letter
-// triggers CMD+letter instead of backspace+letter, while still making
-// shortcuts like CMD+Z and CMD+SHIFT+V reliable (they are nested taps).
+// Disabled; chordal hold handles the opposite-hands rule.
 bool get_hold_on_other_key_press(uint16_t keycode, keyrecord_t *record) {
     return false;
 }
