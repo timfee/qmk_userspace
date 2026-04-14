@@ -25,36 +25,11 @@ const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = {
     { 0,   0,   0,  'R', 'R', 'R',  0 },  // row 7: right thumb
 };
 
-// ── Chordal Hold per-key override ──
-// Layer-tap keys always resolve as hold so the layer activates for
-// same-hand keys.  Cross-hand mod-tap chords always resolve as hold.
-// Same-hand mod-tap chords use a timing heuristic: if the other key
-// arrives within 150 ms of the tap-hold key press it is a fast typing
-// roll (tap); otherwise the user is deliberately holding a modifier
-// for a shortcut like Cmd+V or Cmd+Shift+V (hold).
-#define CHORDAL_SAME_HAND_MS 150
-
 bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
                       uint16_t other_keycode, keyrecord_t *other_record) {
-    // Layer-tap: always hold (layers need same-hand access).
-    if (IS_QK_LAYER_TAP(tap_hold_keycode)) {
-        return true;
-    }
-
-    // Cross-hand: always hold (standard chordal behaviour).
-    if (get_chordal_hold_default(tap_hold_record, other_record)) {
-        return true;
-    }
-
-    // Same-hand mod-tap: timing decides tap vs hold.
-    if (IS_QK_MOD_TAP(tap_hold_keycode)) {
-        uint16_t elapsed =
-            other_record->event.time - tap_hold_record->event.time;
-        return elapsed >= CHORDAL_SAME_HAND_MS;
-    }
-
-    // Any other same-hand combo: tap.
-    return false;
+    if (IS_QK_LAYER_TAP(tap_hold_keycode)) return true;
+    if (IS_QK_MOD_TAP(tap_hold_keycode)) return true;
+    return get_chordal_hold_default(tap_hold_record, other_record);
 }
 
 // ── Combos (matching Vial config) ──
