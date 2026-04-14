@@ -7,20 +7,35 @@
 
 // ── Chordal Hold layout ──
 // Defines hand assignments for the "opposite hands" tap-hold rule.
-// 'L' = left hand, 'R' = right hand, '*' = either (thumb keys).
+// 'L' = left hand, 'R' = right hand.
+// Thumbs are assigned to their physical hand so that same-hand fast
+// typing (e.g. backspace → A) resolves as tap, while cross-hand
+// shortcuts (e.g. left-thumb CMD + right-hand key) resolve as hold.
 // Matrix: 8 rows × 7 cols (4 rows per half, split keyboard).
 //   Rows 0-2: left finger rows    Rows 4-6: right finger rows
 //   Row 3:    left thumb           Row 7:    right thumb
 const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = {
     {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 0: left top
     {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 1: left mid
-    {'L', 'L', 'L', 'L', 'L', 'L', 0  },  // row 2: left bot
-    { 0,   0,   0,  '*', '*', '*',  0  },  // row 3: left thumb
+    {'L', 'L', 'L', 'L', 'L', 'L',  0 },  // row 2: left bot
+    { 0,   0,   0,  'L', 'L', 'L',  0 },  // row 3: left thumb
     {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 4: right top
     {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 5: right mid
-    {'R', 'R', 'R', 'R', 'R', 'R',  0  },  // row 6: right bot
-    { 0,   0,   0,  '*', '*', '*',  0  },  // row 7: right thumb
+    {'R', 'R', 'R', 'R', 'R', 'R',  0 },  // row 6: right bot
+    { 0,   0,   0,  'R', 'R', 'R',  0 },  // row 7: right thumb
 };
+
+// ── Chordal Hold per-key override ──
+// Layer-tap keys (ESC_L2, MIN_L1) must always resolve as hold when
+// another key is pressed so the layer activates — even for same-hand keys.
+// Mod-tap keys use the default layout-based logic (cross-hand = hold).
+bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
+                      uint16_t other_keycode, keyrecord_t *other_record) {
+    if (IS_QK_LAYER_TAP(tap_hold_keycode)) {
+        return true;
+    }
+    return get_chordal_hold_default(tap_hold_record, other_record);
+}
 
 // ── Combos (matching Vial config) ──
 const uint16_t PROGMEM lparen_combo[] = {KC_R, KC_T, COMBO_END};

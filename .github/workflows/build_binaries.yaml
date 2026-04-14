@@ -9,8 +9,9 @@ jobs:
   build:
     name: 'QMK Userspace Build'
     uses: qmk/.github/.github/workflows/qmk_userspace_build.yml@main
-    # Firmware lives in qmk_firmware/ submodule — no external repo needed.
-    # The reusable workflow detects the submodule and skips its own clone.
+    with:
+      qmk_repo: Keebart/vial-qmk-corne-choc-pro
+      qmk_ref: vial
 
   publish:
     name: 'QMK Userspace Publish'

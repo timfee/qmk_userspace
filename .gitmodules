@@ -1,4 +1,0 @@
-[submodule "qmk_firmware"]
-	path = qmk_firmware
-	url = https://github.com/Keebart/vial-qmk-corne-choc-pro.git
-	branch = vial
