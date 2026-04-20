@@ -10,8 +10,8 @@ jobs:
     name: 'QMK Userspace Build'
     uses: qmk/.github/.github/workflows/qmk_userspace_build.yml@main
     with:
-      qmk_repo: Keebart/vial-qmk-corne-choc-pro
-      qmk_ref: vial
+      qmk_repo: timfee/vial-qmk-corne-choc-pro
+      qmk_ref: vial-speculative-hold
 
   publish:
     name: 'QMK Userspace Publish'
