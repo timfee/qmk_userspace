@@ -18,11 +18,11 @@ const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = {
     {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 0: left top
     {'L', 'L', 'L', 'L', 'L', 'L', 'L'},  // row 1: left mid
     {'L', 'L', 'L', 'L', 'L', 'L',  0 },  // row 2: left bot
-    { 0,   0,   0,  'L', 'L', 'L',  0 },  // row 3: left thumb
+    { 0,   0,   0,  '*', '*', '*',  0 },  // row 3: left thumb (wildcard: hold with either hand)
     {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 4: right top
     {'R', 'R', 'R', 'R', 'R', 'R', 'R'},  // row 5: right mid
     {'R', 'R', 'R', 'R', 'R', 'R',  0 },  // row 6: right bot
-    { 0,   0,   0,  'R', 'R', 'R',  0 },  // row 7: right thumb
+    { 0,   0,   0,  '*', '*', '*',  0 },  // row 7: right thumb (wildcard: hold with either hand)
 };
 
 bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record,
@@ -59,7 +59,7 @@ combo_t key_combos[COMBO_COUNT] = {
 
 static const uint8_t OLED_WIDTH = OLED_DISPLAY_HEIGHT;
 
-typedef struct { bool oled_on; }    oled_state_m2s_t;
+typedef struct { bool oled_on; uint8_t spec_mods; } oled_state_m2s_t;
 typedef struct { uint16_t keycode; } lastkey_m2s_t;
 typedef struct { uint32_t left; uint32_t right; } presses_m2s_t;
 
@@ -204,8 +204,8 @@ void keyboard_post_init_user(void) {
 void housekeeping_task_user(void) {
     if (is_keyboard_master()) {
         static uint32_t last_sync = 0;
-        if (timer_elapsed32(last_sync) > 500) {
-            oled_state_m2s_t pkt = { is_oled_on() };
+        if (timer_elapsed32(last_sync) > 50) {
+            oled_state_m2s_t pkt = { is_oled_on(), get_speculative_mods() };
             (void)transaction_rpc_send(USER_SYNC_OLED_STATE, sizeof(pkt), &pkt);
             last_sync = timer_read32();
         }
@@ -264,6 +264,12 @@ uint16_t get_quick_tap_term(uint16_t keycode, keyrecord_t *record) {
     return QUICK_TAP_TERM;
 }
 
+// ── Speculative hold: apply mod instantly on keydown for ALL mod-taps ──
+// Default only covers Ctrl/Shift; we need GUI and Alt for thumb keys.
+bool get_speculative_hold(uint16_t keycode, keyrecord_t *record) {
+    return IS_QK_MOD_TAP(keycode);
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // OLED rendering
 // ═══════════════════════════════════════════════════════════════════
@@ -319,13 +325,13 @@ bool oled_task_user(void) {
         uint32_t idle = timer_elapsed32(g_user_ontime);
         if (is_oled_on() && idle > OLED_TIMEOUT_USER) {
             oled_off();
-            oled_state_m2s_t pkt = { false };
+            oled_state_m2s_t pkt = { false, 0 };
             (void)transaction_rpc_send(USER_SYNC_OLED_STATE, sizeof(pkt), &pkt);
             return false;
         }
         if (!is_oled_on() && idle <= OLED_TIMEOUT_USER) {
             oled_on();
-            oled_state_m2s_t pkt = { true };
+            oled_state_m2s_t pkt = { true, get_speculative_mods() };
             (void)transaction_rpc_send(USER_SYNC_OLED_STATE, sizeof(pkt), &pkt);
         }
     } else {
@@ -343,29 +349,46 @@ bool oled_task_user(void) {
     uint8_t pct_left  = round_percentage((100.0f * lpresses) / total);
     uint8_t pct_right = round_percentage((100.0f * rpresses) / total);
 
-    // ── Left half ──
+    // ── Speculative hold indicator (both halves) ──
+    uint8_t spec = is_keyboard_master() ? get_speculative_mods() : g_remote_oled_state.spec_mods;
+
+    // ── Left half (compacted layout) ──
     if (is_keyboard_left()) {
+        // Row 0-1: Layer
         oled_set_cursor(0, 0);
         oled_write_P(PSTR("Layer:"), false);
         print_current_layer(1);
 
-        // Lock indicators (16×16 bitmaps)
+        // Row 2-3: Lock indicators (16×16 bitmaps)
         led_t led_state = host_keyboard_led_state();
-        oled_blit_16x16_P(led_state.num_lock    ? NUM_LOCK_BITMAP    : EMPTY_BITMAP, 0,  3);
-        oled_blit_16x16_P(led_state.caps_lock   ? CAPS_LOCK_BITMAP   : EMPTY_BITMAP, 24, 3);
-        oled_blit_16x16_P(led_state.scroll_lock ? SCROLL_LOCK_BITMAP : EMPTY_BITMAP, 48, 3);
+        oled_blit_16x16_P(led_state.num_lock    ? NUM_LOCK_BITMAP    : EMPTY_BITMAP, 0,  2);
+        oled_blit_16x16_P(led_state.caps_lock   ? CAPS_LOCK_BITMAP   : EMPTY_BITMAP, 24, 2);
+        oled_blit_16x16_P(led_state.scroll_lock ? SCROLL_LOCK_BITMAP : EMPTY_BITMAP, 48, 2);
 
-        oled_set_cursor(0, 7);
+        // Row 4-5: Balance
+        oled_set_cursor(0, 4);
         oled_write_P(PSTR("Left:"), false);
-        print_balance(8, pct_left);
+        print_balance(5, pct_left);
 
-        oled_set_cursor(0, 10);
+        // Row 6-7: Last Key
+        oled_set_cursor(0, 6);
         oled_write_P(PSTR("Last Key:"), false);
-        oled_set_cursor(0, 11);
+        oled_set_cursor(0, 7);
         oled_print_right_aligned(get_keycode_string(unwrap_keycode(g_last_keycode)),
                                  g_oled_max_char);
 
-        // Large layer digit (centered, pages 12–15)
+        // Row 8-9: Speculative hold indicator (flashing when active)
+        oled_set_cursor(0, 8);
+        if (spec) {
+            bool blink = (timer_read() / 150) % 2;
+            oled_write_P(PSTR("HOLD"), blink);
+        } else {
+            oled_write_P(PSTR("    "), false);
+        }
+        oled_set_cursor(0, 9);
+        oled_write_P(PSTR("    "), false);
+
+        // Rows 12–15: Large layer digit (centered)
         render_large_layer_digit(12);
     }
     // ── Right half ──
@@ -384,7 +407,18 @@ bool oled_task_user(void) {
         oled_write_P(PSTR("Right:"), false);
         print_balance(8, pct_right);
 
-        // Large layer digit (centered, pages 12–15)
+        // Row 9-10: Speculative hold indicator (flashing when active)
+        oled_set_cursor(0, 9);
+        if (spec) {
+            bool blink = (timer_read() / 150) % 2;
+            oled_write_P(PSTR("HOLD"), blink);
+        } else {
+            oled_write_P(PSTR("    "), false);
+        }
+        oled_set_cursor(0, 10);
+        oled_write_P(PSTR("    "), false);
+
+        // Rows 12–15: Large layer digit (centered)
         render_large_layer_digit(12);
     }
 
