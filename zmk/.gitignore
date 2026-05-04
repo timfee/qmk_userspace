@@ -1,0 +1,7 @@
+build/
+.west/
+zmk-config/
+*.uf2
+*.bin
+*.hex
+.DS_Store
